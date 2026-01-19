@@ -1,26 +1,22 @@
-// pages/api/follow.js
-
-import { URL } from "url";
+// app/api/follow/route.js
+export const runtime = 'edge';
 
 const MAX_REDIRECTS = 10;
 const TIMEOUT = 8000;
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const { url } = req.body;
+export async function POST(request) {
+  const body = await request.json();
+  const { url } = body;
 
   if (!url) {
-    return res.status(400).json({ error: "URL is required" });
+    return Response.json({ error: "URL is required" }, { status: 400 });
   }
 
   let targetUrl;
   try {
     targetUrl = new URL(url);
   } catch {
-    return res.status(400).json({ error: "Invalid URL" });
+    return Response.json({ error: "Invalid URL" }, { status: 400 });
   }
 
   // SSRF protection – block local/private addresses
@@ -30,7 +26,7 @@ export default async function handler(req, res) {
     targetUrl.hostname.startsWith("192.168.") ||
     targetUrl.hostname.startsWith("10.")
   ) {
-    return res.status(400).json({ error: "Blocked URL" });
+    return Response.json({ error: "Blocked URL" }, { status: 400 });
   }
 
   const redirects = [];
@@ -40,16 +36,19 @@ export default async function handler(req, res) {
     for (let i = 0; i < MAX_REDIRECTS; i++) {
       const start = Date.now();
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
+
       const response = await fetch(currentUrl, {
         method: "GET",
         redirect: "manual",
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (compatible; RedirectChecker/1.0)",
+          "User-Agent": "Mozilla/5.0 (compatible; RedirectChecker/1.0)",
         },
-        signal: AbortSignal.timeout(TIMEOUT),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
       const duration = Date.now() - start;
 
       redirects.push({
@@ -68,15 +67,18 @@ export default async function handler(req, res) {
       currentUrl = new URL(location, currentUrl).toString();
     }
 
-    return res.status(200).json({
+    return Response.json({
       redirects,
       finalUrl: currentUrl,
       totalRedirects: redirects.length,
     });
   } catch (err) {
-    return res.status(500).json({
-      error: "Failed to fetch URL",
-      details: err.message,
-    });
+    return Response.json(
+      {
+        error: "Failed to fetch URL",
+        details: err.message,
+      },
+      { status: 500 }
+    );
   }
 }
