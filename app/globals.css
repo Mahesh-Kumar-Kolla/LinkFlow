@@ -16,6 +16,22 @@
   --text-secondary: #64748b;
 }
 
+/* Dark mode variables */
+.dark {
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --secondary: #94a3b8;
+  --accent: #38bdf8;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --surface: #0f172a;
+  --surface-secondary: #1e293b;
+  --border: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+}
+
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;
@@ -37,8 +53,16 @@ html {
   border-radius: 4px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 /* Animated gradient background */
@@ -58,6 +82,11 @@ html {
   background: linear-gradient(-45deg, #f0f9ff, #e0f2fe, #f8fafc, #eff6ff);
   background-size: 400% 400%;
   animation: gradientShift 15s ease infinite;
+}
+
+.dark .animated-gradient {
+  background: linear-gradient(-45deg, #0f172a, #1e293b, #0f172a, #1e1e2e);
+  background-size: 400% 400%;
 }
 
 /* Floating animation */
@@ -229,6 +258,11 @@ html {
   animation: shimmer 1.5s infinite;
 }
 
+.dark .animate-shimmer {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background-size: 200% 100%;
+}
+
 /* Link icon animation */
 @keyframes linkPulse {
   0%, 100% {
@@ -296,6 +330,10 @@ html {
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
 }
 
+.dark .card-lift:hover {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+}
+
 /* Input focus glow */
 .input-glow:focus {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2), 0 0 20px rgba(59, 130, 246, 0.1);
@@ -312,6 +350,11 @@ html {
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.dark .glass-card {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(51, 65, 85, 0.5);
 }
 
 /* Status dot pulse */
@@ -333,6 +376,13 @@ html {
 /* Gradient text */
 .gradient-text {
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #0ea5e9 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dark .gradient-text {
+  background: linear-gradient(135deg, #60a5fa 0%, #38bdf8 50%, #22d3ee 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -361,4 +411,21 @@ html {
 .card-hover:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode toggle animation */
+@keyframes toggleSwitch {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.toggle-switch {
+  animation: toggleSwitch 0.2s ease-out;
 }
