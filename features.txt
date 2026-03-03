@@ -1,0 +1,102 @@
+================================================================================
+                            LINKFLOW - FEATURES
+================================================================================
+              URL Redirect Chain Analyzer for Security & Transparency
+================================================================================
+
+WHAT IT DOES
+------------
+LinkFlow analyzes any URL and reveals its complete redirect chain - showing
+exactly where a link takes you before you click it. Perfect for checking
+shortened URLs, affiliate links, or any suspicious links.
+
+
+CORE FEATURES
+-------------
+
+1. Complete Redirect Chain Analysis
+   - Follows up to 10 redirects automatically
+   - Shows every step from the original URL to final destination
+   - Displays HTTP status code for each hop (200, 301, 302, 404, etc.)
+   - Measures response time for each redirect
+
+2. Final Destination Reveal
+   - See exactly where a shortened URL (bit.ly, t.co, etc.) leads
+   - Copy the final URL with one click
+   - Open the destination directly in a new tab
+
+3. URL Details
+   - Shows if the connection is secure (HTTPS) or not (HTTP)
+   - Displays the domain name and port
+   - Shows server information
+
+4. Safety Assessment
+   - Identifies known trusted domains (Google, YouTube, GitHub, etc.)
+   - Warns about potentially suspicious domains
+   - Flags insecure HTTP connections
+   - Helps you decide if a link is safe before visiting
+
+5. Analysis History
+   - Saves your last 10 analyzed URLs
+   - Quick re-analyze from history with one click
+   - Delete individual items or clear all history
+
+6. Dark Mode
+   - Switch between light and dark themes
+   - Preference is remembered
+
+
+HOW IT'S USEFUL
+---------------
+
+For Security:
+  - Check suspicious links before clicking
+  - Identify phishing attempts hidden behind URL shorteners
+  - Verify affiliate links go where they claim
+
+For Marketers:
+  - Debug redirect chains in campaigns
+  - Verify tracking links are working correctly
+  - Check competitor shortened URLs
+
+For Developers:
+  - Debug redirect issues
+  - Test URL forwarding configurations
+  - Analyze response times across redirect hops
+
+For Everyone:
+  - Know where you're going before you get there
+  - Avoid malicious websites
+  - Understand how URL shorteners work
+
+ARCHITECTURE
+------------
+Built using Next.js App Router with Edge Functions, where the frontend 
+interacts with a server-side redirect analysis API deployed on Vercel.
+
+It follows a serverless architecture where Edge Functions handle 
+redirect tracing and return structured redirect-chain data to the client.
+
+
+HOW IT WORKS
+------------
+The Edge Function sends HTTP requests, follows redirect responses 
+(301/302), captures status codes and headers, and returns the full 
+redirect chain to the frontend.
+
+
+TECH STACK
+----------
+Developed with Next.js 16 (App Router), React 19, TypeScript, 
+and Tailwind CSS, deployed using Vercel Edge Functions.
+
+
+SECURITY USEFULNESS
+-------------------
+Helps detect phishing links, open redirects, and insecure HTTP 
+destinations by exposing the complete redirect path before visiting a URL.
+
+================================================================================
+                         linkflows.vercel.app
+                     Built by Mahesh Kumar Kolla
+================================================================================
