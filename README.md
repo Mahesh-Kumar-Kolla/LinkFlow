@@ -64,7 +64,7 @@ LinkFlow uses a serverless Edge Function architecture deployed on Vercel. When y
 
 ## Screenshot
 
-![LinkFlow Screenshot](public/screenshot.png)
+![LinkFlow Screenshot](screenshot.png)
 
 ## Tech Stack
 
