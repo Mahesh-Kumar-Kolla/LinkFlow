@@ -19,8 +19,9 @@ type Redirect = {
 };
 
 type Safety = {
-  level: 'safe' | 'warning' | 'caution' | 'unknown';
+  level: 'safe' | 'warning' | 'caution' | 'unknown' | 'danger';
   message: string;
+  threats?: string[];
 };
 
 type ServerInfo = {
@@ -35,7 +36,34 @@ type ApiResult = {
   totalRedirects: number;
   serverInfo?: ServerInfo;
   safety?: Safety;
+  securityInfo?: SecurityInfo;
+  legitimacy?: LegitimacyInfo;
   analyzedAt?: string;
+};
+
+type LegitimacyFlag = {
+  id: string;
+  triggered: boolean;
+  label: string;
+  desc: string;
+  detail: string | null;
+};
+
+type LegitimacyInfo = {
+  verdict: 'legitimate' | 'suspicious' | 'fraudulent';
+  flags: LegitimacyFlag[];
+};
+
+type SecurityInfo = {
+  https: boolean;
+  hsts: string | null;
+  noSniff: boolean;
+  frameOptions: string | null;
+  csp: boolean;
+  frameProtection: boolean;
+  httpsUpgrade: boolean;
+  score: number;
+  maxScore: number;
 };
 
 type HistoryItem = {
@@ -160,6 +188,14 @@ const UnlockIcon = () => (
   </svg>
 );
 
+const ShareIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+    <polyline points="16 6 12 2 8 6"/>
+    <line x1="12" x2="12" y1="2" y2="15"/>
+  </svg>
+);
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [data, setData] = useState<ApiResult | null>(null);
@@ -170,18 +206,27 @@ export default function Home() {
   const [darkMode, setDarkMode] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [copiedShare, setCopiedShare] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'diagram'>('list');
 
-  // Load dark mode preference and history from localStorage
+  // Load dark mode preference and history from localStorage, handle shared URL params
   useEffect(() => {
     const savedDarkMode = localStorage.getItem('linkflow-darkmode');
     if (savedDarkMode === 'true') {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
     }
-    
+
     const savedHistory = localStorage.getItem('linkflow-history');
     if (savedHistory) {
       setHistory(JSON.parse(savedHistory));
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const urlParam = params.get('url');
+    if (urlParam) {
+      setUrl(urlParam);
+      analyzeUrl(urlParam);
     }
   }, []);
 
@@ -208,7 +253,8 @@ export default function Home() {
       safety: result.safety,
     };
     
-    const updatedHistory = [newItem, ...history].slice(0, 10); // Keep last 10
+    const existing: HistoryItem[] = JSON.parse(localStorage.getItem('linkflow-history') || '[]');
+    const updatedHistory = [newItem, ...existing].slice(0, 10);
     setHistory(updatedHistory);
     localStorage.setItem('linkflow-history', JSON.stringify(updatedHistory));
   };
@@ -251,13 +297,13 @@ export default function Home() {
     }
   };
 
-  const checkRedirects = async () => {
+  const analyzeUrl = async (targetUrl: string) => {
     setLoading(true);
     setError("");
     setData(null);
 
     try {
-      const toFetch = normalizeUrl(url);
+      const toFetch = normalizeUrl(targetUrl);
       const res = await fetch("/api/follow", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -271,12 +317,17 @@ export default function Home() {
       }
 
       setData(result);
-      saveToHistory(url, result);
+      saveToHistory(targetUrl, result);
+      window.history.replaceState({}, '', `?url=${encodeURIComponent(targetUrl)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
+  };
+
+  const checkRedirects = async () => {
+    await analyzeUrl(url);
   };
 
   const copyToClipboard = async (text: string, index: number | "final") => {
@@ -292,6 +343,15 @@ export default function Home() {
     } catch (err) {
       console.error("Failed to copy:", err);
     }
+  };
+
+  const shareResult = async () => {
+    const shareLink = `${window.location.origin}${window.location.pathname}?url=${encodeURIComponent(url)}`;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 2000);
+    } catch {}
   };
 
   const getStatusBadge = (status: number) => {
@@ -352,6 +412,9 @@ export default function Home() {
       unknown: darkMode
         ? "bg-slate-700 text-slate-300 border-slate-600"
         : "bg-slate-600 text-white border-slate-700",
+      danger: darkMode
+        ? "bg-red-900/60 text-red-300 border-red-600"
+        : "bg-red-700 text-white border-red-800",
     };
 
     const icons = {
@@ -359,6 +422,7 @@ export default function Home() {
       warning: "⚠️",
       caution: "⚡",
       unknown: "❓",
+      danger: "🚨",
     };
 
     return (
@@ -594,6 +658,34 @@ export default function Home() {
         {/* Results */}
         {data && !loading && (
           <div className="space-y-6">
+
+            {/* Malicious Warning Banner */}
+            {(data.safety?.level === 'danger' || data.legitimacy?.verdict === 'fraudulent') && (
+              <div className="animate-scaleIn relative overflow-hidden rounded-2xl border-2 border-red-500 bg-gradient-to-r from-red-600 to-rose-700 p-5 shadow-xl shadow-red-500/30 text-white">
+                <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                <div className="relative flex items-start gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-2xl">
+                    🚨
+                  </div>
+                  <div>
+                    <p className="text-lg font-extrabold tracking-wide uppercase">Malicious Link Detected</p>
+                    <p className="text-sm text-red-100 mt-1">
+                      {data.safety?.level === 'danger'
+                        ? data.safety.message
+                        : 'This domain shows signs of fraud or impersonation. Do not visit this site.'}
+                    </p>
+                    {data.safety?.threats && data.safety.threats.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {data.safety.threats.map(t => (
+                          <span key={t} className="px-2 py-0.5 text-xs font-semibold bg-white/20 rounded-full">{t.replace(/_/g, ' ')}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Summary Card */}
             <div className="glass-card rounded-2xl shadow-xl p-6 animate-scaleIn">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -610,74 +702,100 @@ export default function Home() {
                     </p>
                   </div>
                 </div>
-                <div className={`flex items-center gap-3 px-4 py-2 ${darkMode ? 'bg-slate-800' : 'bg-slate-100'} rounded-xl`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                  <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Total:</span>
-                  <span className={`font-mono font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                    {data.redirects.reduce((acc, r) => acc + r.timeMs, 0)}ms
-                  </span>
+                <div className="flex items-center gap-2">
+                  <div className={`flex items-center gap-3 px-4 py-2 ${darkMode ? 'bg-slate-800' : 'bg-slate-100'} rounded-xl`}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Total:</span>
+                    <span className={`font-mono font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                      {data.redirects.reduce((acc, r) => acc + r.timeMs, 0)}ms
+                    </span>
+                  </div>
+                  <button
+                    onClick={shareResult}
+                    className={`flex items-center gap-2 px-4 py-2 ${darkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} rounded-xl transition-all duration-200`}
+                    title="Copy share link"
+                  >
+                    {copiedShare ? <CheckIcon /> : <ShareIcon />}
+                    <span className="text-sm">{copiedShare ? 'Copied!' : 'Share'}</span>
+                  </button>
                 </div>
               </div>
             </div>
 
-            {/* URL Details Card */}
-            {data.finalUrlDetails && (
-              <div className={`glass-card rounded-2xl shadow-xl p-6 animate-fadeInUp`}>
-                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'} mb-4 flex items-center gap-2`}>
-                  <span className={`w-8 h-8 rounded-lg ${darkMode ? 'bg-purple-900/50' : 'bg-purple-100'} flex items-center justify-center`}>
-                    <GlobeIcon className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
-                  </span>
-                  URL Details
-                </h3>
-                
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
-                    <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-1`}>Protocol</p>
-                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-1`}>
-                      {data.finalUrlDetails.isHttps ? <LockIcon /> : <UnlockIcon />}
-                      {data.finalUrlDetails.protocol.toUpperCase()}
-                    </p>
-                  </div>
-                  <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
-                    <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-1`}>Domain</p>
-                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'} truncate`}>{data.finalUrlDetails.hostname}</p>
-                  </div>
-                  <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
-                    <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-1`}>Port</p>
-                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{data.finalUrlDetails.port}</p>
-                  </div>
-                  {data.serverInfo && (
-                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
-                      <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-1`}>Server</p>
-                      <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'} truncate`}>{data.serverInfo.server}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Safety Indicator */}
-                {data.safety && (
-                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-2`}>Safety Assessment</p>
-                    {getSafetyBadge(data.safety)}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Redirect Chain */}
             <div className="glass-card rounded-2xl shadow-xl p-6 animate-fadeInUp" style={{ animationDelay: "0.1s" }}>
-              <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'} mb-6 flex items-center gap-2`}>
-                <span className={`w-8 h-8 rounded-lg ${darkMode ? 'bg-blue-900/50' : 'bg-blue-100'} flex items-center justify-center`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                  </svg>
-                </span>
-                Redirect Chain
-              </h3>
-              
+              <div className="flex items-center justify-between mb-6">
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+                  <span className={`w-8 h-8 rounded-lg ${darkMode ? 'bg-blue-900/50' : 'bg-blue-100'} flex items-center justify-center`}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                    </svg>
+                  </span>
+                  Redirect Chain
+                </h3>
+                <div className={`flex rounded-lg overflow-hidden border ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === 'list' ? 'bg-blue-600 text-white' : darkMode ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                  >
+                    List
+                  </button>
+                  <button
+                    onClick={() => setViewMode('diagram')}
+                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === 'diagram' ? 'bg-blue-600 text-white' : darkMode ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                  >
+                    Diagram
+                  </button>
+                </div>
+              </div>
+
+              {viewMode === 'diagram' ? (
+                <div className="flex flex-col items-center py-2">
+                  {data.redirects.map((r) => {
+                    const getNodeColors = (status: number) => {
+                      if (status >= 200 && status < 300) return { circle: 'bg-emerald-500', badge: darkMode ? 'bg-emerald-900/40 text-emerald-400' : 'bg-emerald-100 text-emerald-700' };
+                      if (status >= 300 && status < 400) return { circle: 'bg-amber-500', badge: darkMode ? 'bg-amber-900/40 text-amber-400' : 'bg-amber-100 text-amber-700' };
+                      if (status >= 400 && status < 500) return { circle: 'bg-red-500', badge: darkMode ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700' };
+                      return { circle: 'bg-purple-500', badge: darkMode ? 'bg-purple-900/40 text-purple-400' : 'bg-purple-100 text-purple-700' };
+                    };
+                    const colors = getNodeColors(r.status);
+                    const domain = r.details?.hostname || r.url;
+                    return (
+                      <div key={r.step} className="flex flex-col items-center w-full max-w-lg">
+                        <div className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl border-2 ${darkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-200'} shadow-sm`}>
+                          <div className={`w-8 h-8 rounded-full ${colors.circle} text-white flex items-center justify-center text-sm font-bold flex-shrink-0`}>
+                            {r.step}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-mono truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{domain}</p>
+                            <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{r.timeMs}ms</p>
+                          </div>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${colors.badge}`}>{r.status}</span>
+                        </div>
+                        <div className={`flex flex-col items-center py-1 ${darkMode ? 'text-blue-500' : 'text-blue-300'}`}>
+                          <div className={`w-0.5 h-5 ${darkMode ? 'bg-blue-500/40' : 'bg-blue-200'}`}></div>
+                          <ArrowDownIcon />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center gap-3 w-full max-w-lg px-4 py-3 rounded-xl border-2 border-blue-500 bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/25">
+                    <div className="w-8 h-8 rounded-full bg-white/20 text-white flex items-center justify-center flex-shrink-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-blue-200 mb-0.5">Final Destination</p>
+                      <p className="text-sm font-mono text-white truncate">{data.finalUrlDetails?.hostname || data.finalUrl}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div className="space-y-0">
                 {data.redirects.map((r, index) => (
                   <div key={r.step} className="animate-slideIn" style={{ animationDelay: `${index * 100}ms` }}>
@@ -685,7 +803,7 @@ export default function Home() {
                       <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-md shadow-blue-500/25 group-hover:scale-110 transition-transform duration-300">
                         {r.step}
                       </div>
-                      
+
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           {getStatusBadge(r.status)}
@@ -698,7 +816,7 @@ export default function Home() {
                             </span>
                           )}
                         </div>
-                        
+
                         <div className="flex items-start gap-2">
                           <p className={`text-sm ${darkMode ? 'text-slate-300 group-hover:text-white' : 'text-slate-700 group-hover:text-slate-900'} font-mono break-all flex-1 transition-colors`} title={r.url}>
                             <span className="hidden sm:inline">{r.url}</span>
@@ -729,6 +847,7 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+              )}
             </div>
 
             {/* Final URL Card */}
@@ -778,6 +897,140 @@ export default function Home() {
                 </div>
               </div>
             </div>
+
+            {/* URL Details Card */}
+            {data.finalUrlDetails && (
+              <div className={`glass-card rounded-2xl shadow-xl p-6 animate-fadeInUp`}>
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'} mb-4 flex items-center gap-2`}>
+                  <span className={`w-8 h-8 rounded-lg ${darkMode ? 'bg-purple-900/50' : 'bg-purple-100'} flex items-center justify-center`}>
+                    <GlobeIcon className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+                  </span>
+                  URL Details
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                    <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-1`}>Protocol</p>
+                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-1`}>
+                      {data.finalUrlDetails.isHttps ? <LockIcon /> : <UnlockIcon />}
+                      {data.finalUrlDetails.protocol.toUpperCase()}
+                    </p>
+                  </div>
+                  <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                    <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-1`}>Domain</p>
+                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'} truncate`}>{data.finalUrlDetails.hostname}</p>
+                  </div>
+                  <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                    <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-1`}>Port</p>
+                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{data.finalUrlDetails.port}</p>
+                  </div>
+                  {data.serverInfo && (
+                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                      <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-1`}>Server</p>
+                      <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'} truncate`}>{data.serverInfo.server}</p>
+                    </div>
+                  )}
+                </div>
+                {data.safety && (
+                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mb-2`}>Safety Assessment</p>
+                    {getSafetyBadge(data.safety)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Security Checklist */}
+            {data.securityInfo && (
+              <div className={`glass-card rounded-2xl shadow-xl p-6 animate-fadeInUp`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+                    <span className={`w-8 h-8 rounded-lg ${darkMode ? 'bg-emerald-900/50' : 'bg-emerald-100'} flex items-center justify-center`}>
+                      <ShieldIcon className={`w-4 h-4 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                    </span>
+                    Security Checklist
+                  </h3>
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl ${
+                    data.securityInfo.score >= 5
+                      ? darkMode ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
+                      : data.securityInfo.score >= 3
+                        ? darkMode ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-100 text-amber-700'
+                        : darkMode ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'
+                  }`}>
+                    <span className="text-sm font-bold">{data.securityInfo.score} / {data.securityInfo.maxScore}</span>
+                  </div>
+                </div>
+                <div className={`w-full h-2 rounded-full mb-5 ${darkMode ? 'bg-slate-700' : 'bg-slate-200'}`}>
+                  <div
+                    className={`h-2 rounded-full transition-all duration-500 ${
+                      data.securityInfo.score >= 5 ? 'bg-emerald-500'
+                      : data.securityInfo.score >= 3 ? 'bg-amber-500'
+                      : 'bg-red-500'
+                    }`}
+                    style={{ width: `${(data.securityInfo.score / data.securityInfo.maxScore) * 100}%` }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  {[
+                    { pass: data.securityInfo.https, label: 'HTTPS', desc: data.securityInfo.https ? 'Connection is encrypted' : 'Connection is not encrypted', detail: null },
+                    { pass: data.securityInfo.hsts !== null, label: 'HSTS', desc: data.securityInfo.hsts ? 'Browser will always use HTTPS' : 'No Strict-Transport-Security header', detail: data.securityInfo.hsts },
+                    { pass: data.securityInfo.noSniff, label: 'No MIME Sniffing', desc: data.securityInfo.noSniff ? 'X-Content-Type-Options: nosniff set' : 'Missing X-Content-Type-Options header', detail: null },
+                    { pass: data.securityInfo.frameProtection, label: 'Clickjacking Protection', desc: data.securityInfo.frameProtection ? `Protected via ${data.securityInfo.frameOptions ? 'X-Frame-Options' : 'CSP frame-ancestors'}` : 'No X-Frame-Options or CSP frame-ancestors', detail: data.securityInfo.frameOptions },
+                    { pass: data.securityInfo.csp, label: 'Content Security Policy', desc: data.securityInfo.csp ? 'CSP header is present' : 'No Content-Security-Policy header', detail: null },
+                    { pass: data.securityInfo.httpsUpgrade, label: 'HTTPS Upgrade', desc: data.securityInfo.httpsUpgrade ? 'HTTP redirected to HTTPS in chain' : 'No HTTP→HTTPS upgrade detected', detail: null },
+                  ].map(({ pass, label, desc, detail }) => (
+                    <div key={label} className={`flex items-start gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                      <span className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${pass ? 'bg-emerald-500 text-white' : darkMode ? 'bg-slate-600 text-slate-400' : 'bg-slate-300 text-slate-500'}`}>
+                        {pass ? '✓' : '✗'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-semibold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{label}</p>
+                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{desc}</p>
+                        {detail && <p className={`text-xs font-mono mt-1 truncate ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{detail}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Legitimacy Assessment */}
+            {data.legitimacy && (
+              <div className={`glass-card rounded-2xl shadow-xl p-6 animate-fadeInUp`}>
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+                    <span className={`w-8 h-8 rounded-lg ${darkMode ? 'bg-indigo-900/50' : 'bg-indigo-100'} flex items-center justify-center`}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                      </svg>
+                    </span>
+                    Legitimacy Assessment
+                  </h3>
+                  <span className={`px-3 py-1.5 rounded-xl text-sm font-bold ${
+                    data.legitimacy.verdict === 'legitimate'
+                      ? darkMode ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
+                      : data.legitimacy.verdict === 'suspicious'
+                        ? darkMode ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-100 text-amber-700'
+                        : darkMode ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {data.legitimacy.verdict === 'legitimate' ? '✓ Likely Legitimate' : data.legitimacy.verdict === 'suspicious' ? '⚠ Suspicious' : '✗ Likely Fraudulent'}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {data.legitimacy.flags.map((flag) => (
+                    <div key={flag.id} className={`flex items-start gap-3 px-4 py-3 rounded-xl ${flag.triggered ? darkMode ? 'bg-red-900/20 border border-red-800/40' : 'bg-red-50 border border-red-200' : darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                      <span className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${flag.triggered ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>
+                        {flag.triggered ? '✗' : '✓'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-semibold ${flag.triggered ? darkMode ? 'text-red-300' : 'text-red-700' : darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{flag.label}</p>
+                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{flag.desc}</p>
+                        {flag.detail && <p className={`text-xs font-mono mt-1 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{flag.detail}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
